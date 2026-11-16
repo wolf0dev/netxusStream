@@ -64,6 +64,21 @@ const FEATURES = [
     text: 'En Android, OpenVPN nativo con perfil principal y de respaldo. En Windows, proxy HTTP configurable.',
   },
   {
+    title: 'Varios equipos a la vez',
+    icon: '📱',
+    text: 'Android, Android TV y Windows en paralelo: cada instalación tiene su propia identidad y ninguna cierra la sesión de la otra.',
+  },
+  {
+    title: 'Listo al abrir',
+    icon: '✅',
+    text: 'Sin cuentas ni códigos: la app se registra sola la primera vez y recuerda su identidad en los siguientes arranques.',
+  },
+  {
+    title: 'Portable',
+    icon: '🧳',
+    text: 'La misma app para televisor, móvil y escritorio, con instalación en un clic y sin dependencias extra.',
+  },
+  {
     title: 'Caché inteligente',
     icon: '⚡',
     text: 'Arranca al instante con la caché local y renueva credenciales en segundo plano, sin cortes para ti.',
