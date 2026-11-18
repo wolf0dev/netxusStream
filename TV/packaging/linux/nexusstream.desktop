@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=NexusStream
+Comment=Reproductor IPTV: canales en vivo, películas y series
+GenericName=Reproductor de vídeo
+Exec=nexusstream %U
+Icon=nexusstream
+Terminal=false
+Categories=AudioVideo;Video;Player;TV;
+Keywords=iptv;tv;streaming;player;video;
+StartupNotify=true
+StartupWMClass=com.nexusstream.nexusstream

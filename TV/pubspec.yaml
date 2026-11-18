@@ -1,0 +1,67 @@
+name: nexusstream
+description: "NexusStream — reproductor IPTV multiplataforma para Android, Android TV y Windows."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # Red y parseo de la lista M3U
+  http: ^1.6.0
+
+  # MD5 para registrar la identidad de dispositivo (flujo móvil)
+  crypto: ^3.0.7
+
+  # Motor multimedia (libmpv) para Android y Windows
+  media_kit: ^1.2.6
+  media_kit_video: ^2.0.1
+  media_kit_libs_video: ^1.0.7
+
+  # Persistencia local
+  shared_preferences: ^2.5.6
+  path_provider: ^2.1.6
+
+  # Detección de Android TV
+  device_info_plus: ^13.3.0
+
+  # Ventana nativa en escritorio (pantalla completa)
+  window_manager: ^0.5.2
+  file_selector: ^1.1.0
+
+  # VPN nativa para Android y Android TV
+  openvpn_flutter: ^2.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/banner.png
+    - assets/launcher_icon.png
+    - assets/icono.png
+    - assets/temas/
+    - assets/vpn/config.ovpn
+    - assets/vpn/vpnok.ovpn
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/launcher_icon.png"
+  min_sdk_android: 23
+  adaptive_icon_background: "#0A1128"
+  adaptive_icon_foreground: "assets/adaptive_foreground.png"
+  remove_alpha_ios: true
