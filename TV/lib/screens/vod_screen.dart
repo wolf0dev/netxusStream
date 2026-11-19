@@ -1587,6 +1587,11 @@ class _PosterImage extends StatelessWidget {
     return Image.network(
       url,
       fit: BoxFit.cover,
+      // Los carteles del portal son grandes; en TV, decodificarlos enteros
+      // llena memoria y hace que la cuadrícula se atasque al desplazarse.
+      cacheWidth: 240,
+      cacheHeight: 360,
+      filterQuality: FilterQuality.low,
       errorBuilder: (_, _, _) => placeholder,
       loadingBuilder: (context, child, progress) =>
           progress == null ? child : placeholder,

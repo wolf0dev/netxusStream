@@ -35,7 +35,7 @@ class ChannelLogo extends StatelessWidget {
   Widget build(BuildContext context) {
     final resolvedWidth = size ?? width;
     final resolvedHeight = size ?? height;
-    final content = _buildContent();
+    final content = _buildContent(resolvedWidth, resolvedHeight);
 
     if (resolvedWidth == null && resolvedHeight == null) {
       return SizedBox.expand(child: content);
@@ -48,9 +48,17 @@ class ChannelLogo extends StatelessWidget {
     );
   }
 
-  Widget _buildContent() {
+  Widget _buildContent(double? resolvedWidth, double? resolvedHeight) {
     final placeholder = _LogoFallback(channel: channel, palette: _palette);
     if (!channel.hasLogo) return placeholder;
+
+    // Los logos del portal suelen ser mucho más grandes que la tarjeta. En TV
+    // (con cientos de canales) decodificarlos a tamaño completo llena la
+    // memoria y provoca tirones. Forzamos una decodificación miniaturizada.
+    int? cacheDimension(double? value) {
+      if (value == null) return null;
+      return value.clamp(16.0, 256.0).round();
+    }
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
@@ -58,7 +66,10 @@ class ChannelLogo extends StatelessWidget {
         channel.logo,
         fit: fit,
         gaplessPlayback: true,
-        filterQuality: FilterQuality.medium,
+        filterQuality: FilterQuality.low,
+        cacheWidth: cacheDimension(resolvedWidth ?? resolvedHeight ?? size) ?? 128,
+        cacheHeight:
+            cacheDimension(resolvedHeight ?? resolvedWidth ?? size) ?? 128,
         errorBuilder: (_, _, _) => placeholder,
         loadingBuilder: (context, child, progress) {
           if (progress == null) return child;

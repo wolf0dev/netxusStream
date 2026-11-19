@@ -40,6 +40,12 @@ const ARTIFACTS = [
     file: `NexusStream-${label}.apk`,
     label: 'APK de Android',
   },
+  {
+    key: 'linux',
+    source: path.join(dist, 'NexusStream-1.0.0-linux-x64.tar.gz'),
+    file: `NexusStream-${label}-linux-x64.tar.gz`,
+    label: 'Paquete de Linux x64',
+  },
 ];
 
 const sha256 = async (file) => {

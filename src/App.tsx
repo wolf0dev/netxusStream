@@ -2,6 +2,10 @@ import { For, Show, onCleanup, onMount, type Component, type JSX } from 'solid-j
 import { createEffect, createSignal } from 'solid-js';
 import { downloadUrl, formatBytes, manifest, type DownloadInfo } from './downloads';
 
+type DownloadKind = 'windows' | 'android' | 'linux';
+
+const DOWNLOAD_KINDS: DownloadKind[] = ['windows', 'android', 'linux'];
+
 const NAV_LINKS = [
   { href: '#caracteristicas', label: 'Características' },
   { href: '#capturas', label: 'Capturas' },
@@ -66,7 +70,7 @@ const FEATURES = [
   {
     title: 'Varios equipos a la vez',
     icon: '📱',
-    text: 'Android, Android TV y Windows en paralelo: cada instalación tiene su propia identidad y ninguna cierra la sesión de la otra.',
+    text: 'Android, Android TV, Windows y Linux en paralelo: cada instalación tiene su propia identidad y ninguna cierra la sesión de la otra.',
   },
   {
     title: 'Listo al abrir',
@@ -97,21 +101,40 @@ const AndroidIcon: Component<{ class?: string }> = (props) => (
   </svg>
 );
 
+const LinuxIcon: Component<{ class?: string }> = (props) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" class={props.class} aria-hidden="true">
+    <path d="M12.2 2c-2.3 0-3.7 1.8-3.6 4.3.05 1.4.5 2.3.2 3.2-.3.9-1.3 1.8-2.1 3.1-.9 1.4-1.3 2.9-.6 4.2.4.8 1.2 1.2 2.1 1.3.7.1 1.3-.2 1.8-.7.5-.5.8-1.2 1.4-1.7.6-.5 1.4-.6 2.1-.3.6.3 1 1 1.6 1.4.5.4 1.2.5 1.8.2.8-.4 1.2-1.3 1.1-2.2-.1-1.2-.9-2.2-1.6-3.2-.7-1-1.3-1.9-1.4-3-.1-1.2.4-2.2.2-3.4C16.4 3.6 14.7 2 12.2 2Zm-.7 4.1a.9.9 0 1 1 0 1.8.9.9 0 0 1 0-1.8Zm2.7.1a.8.8 0 1 1 0 1.6.8.8 0 0 1 0-1.6Zm-3.2 4.8c.8.4 1.7.4 2.5.1-.2.6-.6 1-1.2 1.2-.6-.2-1-.6-1.3-1.3Z" />
+  </svg>
+);
+
+const platformIcon = (kind: DownloadKind) => {
+  if (kind === 'windows') return <WindowsIcon class="h-6 w-6" />;
+  if (kind === 'linux') return <LinuxIcon class="h-6 w-6" />;
+  return <AndroidIcon class="h-6 w-6" />;
+};
+
 const DownloadButton: Component<{
   info?: DownloadInfo;
-  kind: 'windows' | 'android';
+  kind: DownloadKind;
   size?: 'lg' | 'md';
 }> = (props) => {
   const href = () =>
     downloadUrl(props.info) ??
     (props.kind === 'windows'
       ? '/downloads/NexusStream-Setup-1.0.0.exe'
-      : '/downloads/NexusStream-1.0.0.apk');
-  const label = () =>
-    props.kind === 'windows' ? 'Descargar para Windows' : 'Descargar para Android';
+      : props.kind === 'linux'
+        ? '/downloads/NexusStream-1.0.0-linux-x64.tar.gz'
+        : '/downloads/NexusStream-1.0.0.apk');
+  const label = () => {
+    if (props.kind === 'windows') return 'Descargar para Windows';
+    if (props.kind === 'linux') return 'Descargar para Linux';
+    return 'Descargar para Android';
+  };
   const meta = () => {
     const parts = [formatBytes(props.info?.bytes)];
     if (props.kind === 'windows') parts.push('Windows 10/11 · 64 bits');
+    else if (props.kind === 'linux')
+      parts.push('Linux x64 · glibc 2.35+ · tar.gz');
     else parts.push('Android 7.0+ · APK');
     return parts.filter(Boolean).join(' · ');
   };
@@ -121,7 +144,9 @@ const DownloadButton: Component<{
   const styles =
     props.kind === 'windows'
       ? `${base} bg-gradient-to-r from-brand-500 to-brand-600 text-white hover:from-brand-400 hover:to-brand-500 hover:shadow-brand-500/30`
-      : `${base} border border-white/15 bg-white/5 text-white hover:border-brand-400/60 hover:bg-white/10`;
+      : props.kind === 'linux'
+        ? `${base} border border-sky-400/30 bg-sky-500/10 text-white hover:border-sky-400/60 hover:bg-sky-500/20`
+        : `${base} border border-white/15 bg-white/5 text-white hover:border-brand-400/60 hover:bg-white/10`;
   const sizeClass = props.size === 'lg' ? 'text-lg' : 'text-base';
 
   return (
@@ -129,17 +154,13 @@ const DownloadButton: Component<{
       when={href()}
       fallback={
         <span class={`${styles} ${sizeClass} pointer-events-none opacity-60`}>
-          <Show when={props.kind === 'windows'} fallback={<AndroidIcon class="h-6 w-6" />}>
-            <WindowsIcon class="h-6 w-6" />
-          </Show>
+          {platformIcon(props.kind)}
           {label()}
         </span>
       }
     >
       <a href={href()} download="" class={`${styles} ${sizeClass} hover:-translate-y-0.5`}>
-        <Show when={props.kind === 'windows'} fallback={<AndroidIcon class="h-6 w-6" />}>
-          <WindowsIcon class="h-6 w-6" />
-        </Show>
+        {platformIcon(props.kind)}
         <span class="flex flex-col items-start leading-tight">
           <span>{label()}</span>
           <span class="text-xs font-normal text-white/70 group-hover:text-white/90">
@@ -218,6 +239,7 @@ const Hero: Component = () => (
       <div class="mt-10 flex flex-col items-center gap-4 sm:flex-row">
         <DownloadButton info={manifest()?.windows} kind="windows" size="lg" />
         <DownloadButton info={manifest()?.android} kind="android" size="lg" />
+        <DownloadButton info={manifest()?.linux} kind="linux" size="lg" />
       </div>
       <p class="mt-4 text-xs text-slate-500">
         Versión {manifest()?.version ?? '1.0.0'} · Gratis · Sin anuncios
@@ -272,6 +294,16 @@ const REQUIREMENTS = [
       'VPN OpenVPN opcional integrada',
     ],
   },
+  {
+    kind: 'linux' as const,
+    title: 'Linux',
+    requirements: [
+      'Ubuntu 22.04 o superior, x86-64',
+      'Se extrae y se ejecuta sin root',
+      'Instalador de usuario opcional incluido',
+      'Requiere libmpv2 en el sistema',
+    ],
+  },
 ];
 
 const Platforms: Component = () => (
@@ -282,18 +314,13 @@ const Platforms: Component = () => (
         title="Elige tu plataforma"
         subtitle="La misma experiencia en el televisor del salón, el móvil y el PC."
       />
-      <div class="grid gap-8 md:grid-cols-2">
+      <div class="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
         <For each={REQUIREMENTS}>
           {(platform) => (
             <div class="rounded-3xl border border-white/5 bg-gradient-to-b from-night-800/80 to-night-900/80 p-8">
               <div class="flex items-center gap-4">
                 <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-500/15 text-brand-400">
-                  <Show
-                    when={platform.kind === 'windows'}
-                    fallback={<AndroidIcon class="h-7 w-7" />}
-                  >
-                    <WindowsIcon class="h-7 w-7" />
-                  </Show>
+                  {platformIcon(platform.kind)}
                 </div>
                 <h3 class="text-xl font-bold text-white">{platform.title}</h3>
               </div>
@@ -594,43 +621,46 @@ const DownloadSection: Component = () => (
         title="Instala NexusStream gratis"
         subtitle="Descarga directa, sin registros. Verifica el checksum si quieres confirmar la integridad del archivo."
       />
-      <div class="grid gap-8 md:grid-cols-2">
-        <For each={[manifest()?.windows, manifest()?.android]}>
-          {(info, index) => (
-            <div class="flex flex-col items-center rounded-3xl border border-white/5 bg-night-950/60 p-8 text-center">
-              <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-500/15 text-brand-400">
-                <Show
-                  when={index() === 0}
-                  fallback={<AndroidIcon class="h-8 w-8" />}
-                >
-                  <WindowsIcon class="h-8 w-8" />
-                </Show>
+      <div class="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+        <For each={DOWNLOAD_KINDS}>
+          {(kind) => {
+            const info = () => manifest()?.[kind];
+            return (
+              <div class="flex flex-col items-center rounded-3xl border border-white/5 bg-night-950/60 p-8 text-center">
+                <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-500/15 text-brand-400">
+                  {platformIcon(kind)}
+                </div>
+                <h3 class="mt-4 text-lg font-bold text-white">
+                  {kind === 'windows'
+                    ? 'Windows (instalador)'
+                    : kind === 'linux'
+                      ? 'Linux x64 (tar.gz)'
+                      : 'Android (APK)'}
+                </h3>
+                <p class="mt-1 text-sm text-slate-400">
+                  {info()?.file ??
+                    (kind === 'windows'
+                      ? 'NexusStream-Setup-1.0.0.exe'
+                      : kind === 'linux'
+                        ? 'NexusStream-1.0.0-linux-x64.tar.gz'
+                        : 'NexusStream-1.0.0.apk')}
+                </p>
+                <div class="mt-6">
+                  <DownloadButton info={info()} kind={kind} size="lg" />
+                </div>
+                <Checksum info={info()} />
               </div>
-              <h3 class="mt-4 text-lg font-bold text-white">
-                {index() === 0 ? 'Windows (instalador)' : 'Android (APK)'}
-              </h3>
-              <p class="mt-1 text-sm text-slate-400">
-                {index() === 0
-                  ? 'NexusStream-Setup-1.0.0.exe'
-                  : 'NexusStream-1.0.0.apk'}
-              </p>
-              <div class="mt-6">
-                <DownloadButton
-                  info={info}
-                  kind={index() === 0 ? 'windows' : 'android'}
-                  size="lg"
-                />
-              </div>
-              <Checksum info={info} />
-            </div>
-          )}
+            );
+          }}
         </For>
       </div>
       <p class="mx-auto mt-10 max-w-2xl text-center text-xs leading-relaxed text-slate-500">
         En Android TV, activa la instalación de orígenes desconocidos para
         instalar el APK. En Windows, si SmartScreen muestra una advertencia,
         elige «Más información → Ejecutar de todas formas»: el instalador no
-        está firmado con un certificado comercial.
+        está firmado con un certificado comercial. En Linux, extrae el tar.gz y
+        ejecuta <code class="text-slate-300">./nexusstream</code> o el
+        instalador de usuario incluido.
       </p>
     </div>
   </section>

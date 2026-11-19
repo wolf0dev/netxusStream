@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Landing page de descargas de NexusStream (Windows y Android)",
+  "description": "Landing page de descargas de NexusStream (Windows, Android y Linux)",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

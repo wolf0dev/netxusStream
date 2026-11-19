@@ -12,6 +12,7 @@ export interface Manifest {
   generatedAt: string;
   windows?: DownloadInfo;
   android?: DownloadInfo;
+  linux?: DownloadInfo;
 }
 
 const FALLBACK: Manifest = {
