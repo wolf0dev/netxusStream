@@ -105,14 +105,16 @@ class _TvScreenState extends State<TvScreen> {
   void _ensurePlayer() {
     if (_player != null) return;
 
-    final player = Player(configuration: PlayerTuning.playerConfiguration());
+    final player = Player(
+      configuration: PlayerTuning.playerConfiguration(isTv: true),
+    );
     final controller = VideoController(
       player,
       configuration: PlayerTuning.videoConfiguration(),
     );
     _player = player;
     _controller = controller;
-    unawaited(PlayerTuning.applyNativeTuning(player));
+    unawaited(PlayerTuning.applyNativeTuning(player, isTv: true));
     unawaited(player.setVolume(_muted ? 0 : 100));
 
     _subscriptions.add(
@@ -745,7 +747,9 @@ class _LivePreview extends StatelessWidget {
   Widget build(BuildContext context) {
     final preview = channel;
     final showVideo = preview != null && controller != null;
-    final busy = loading || (buffering && playing);
+    // Igual que en el reproductor a pantalla completa: si ya hay imagen, los
+    // eventos de `buffering` de libmpv no deben dejar el spinner permanente.
+    final busy = loading || (buffering && !playing);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),

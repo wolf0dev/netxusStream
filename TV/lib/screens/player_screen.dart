@@ -129,12 +129,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _app = AppScope.read(context);
     _activeResume = widget.initialResume;
     _channel = widget.initialChannel;
-    _player = Player(configuration: PlayerTuning.playerConfiguration());
+    final isTv = _app.layout.isTv;
+    _player = Player(configuration: PlayerTuning.playerConfiguration(isTv: isTv));
     _controller = VideoController(
       _player,
       configuration: PlayerTuning.videoConfiguration(),
     );
-    unawaited(PlayerTuning.applyNativeTuning(_player));
+    unawaited(PlayerTuning.applyNativeTuning(_player, isTv: isTv));
     _fullscreen = !kIsWeb && Platform.isAndroid;
     _volume = _player.state.volume;
     _lastAudibleVolume = _volume > 0 ? _volume : 100;
@@ -1047,7 +1048,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   fit: BoxFit.contain,
                   fill: Colors.black,
                 ),
-                if ((_loading || _buffering || _reconnecting) && !_signalLost)
+                // `media_kit` emite `buffering` también mientras la señal ya
+                // se está reproduciendo. Mostrar el overlay en ese caso deja
+                // el canal «Estabilizando…» para siempre en las TV con red
+                // lenta. Solo lo mostramos si de verdad no hay imagen.
+                if ((_loading ||
+                        _reconnecting ||
+                        (_buffering && !_playing)) &&
+                    !_signalLost)
                   _BufferingOverlay(
                     channel: _channel,
                     reconnecting: _reconnecting,

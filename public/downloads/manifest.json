@@ -1,16 +1,16 @@
 {
   "version": "1.0.0",
-  "generatedAt": "2026-11-18T02:40:55.465Z",
+  "generatedAt": "2026-11-19T11:13:48.706Z",
   "windows": {
-    "file": "NexusStream-Setup-1.0.3.exe",
+    "file": "NexusStream-Setup-1.0.4.exe",
     "label": "Instalador de Windows",
-    "bytes": 35563796,
-    "sha256": "AEC3052A69B05849C9F11B290EF9C6492A34013FEA845D476F89E4BE607127BB"
+    "bytes": 35564317,
+    "sha256": "2D4A6ABF13A776D529C48AA984BDA9FC910CF824BB91BF2E9E652C7B25F61443"
   },
   "android": {
-    "file": "NexusStream-1.0.3.apk",
+    "file": "NexusStream-1.0.4.apk",
     "label": "APK de Android",
-    "bytes": 85066688,
-    "sha256": "0EDF3AEEE54FC4EE6A6FEC228F9F53F2F490046EC0C8C92892592B0EE8B386B9"
+    "bytes": 85069336,
+    "sha256": "02D7CE4AFBCA0DED05B42FC20EFE9203189FC0990738123FF84C7C8127D4E50B"
   }
 }

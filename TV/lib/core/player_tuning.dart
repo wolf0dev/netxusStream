@@ -6,9 +6,10 @@ import '../services/proxy_service.dart';
 
 /// Configuración de reproducción orientada a IPTV en vivo.
 ///
-/// Android, Android TV y Windows comparten la misma afinación:
+/// Android y Windows usan un búfer amplio (15 s) para absorber microcortes;
+/// Android TV usa un perfil más ligero (ver las constantes `tv*`) porque con
+/// los valores de escritorio se queda atrapada en «Estabilizando señal…».
 /// * Decodificación por hardware (`hwdec` + `enableHardwareAcceleration`).
-/// * Búfer de red amplio (10-15 s) para absorber microcortes.
 /// * Reintentos silenciosos antes de avisar al usuario.
 abstract final class PlayerTuning {
   /// Segundos de adelanto del demuxer/caché de red.
@@ -26,6 +27,26 @@ abstract final class PlayerTuning {
   /// Segundos antes de considerar que la red se cayó.
   static const int networkTimeoutSeconds = 12;
 
+  // -- perfil Android TV -------------------------------------------------------
+  //
+  // Los televisores (especialmente los Leanback económicos) tienen menos RAM y
+  // un decodificador más lento que un móvil o un PC. Los valores de escritorio
+  // (15 s y 192 MiB de demuxer, HLS a la máxima calidad) los dejan en un bucle
+  // permanente de «Estabilizando señal…». Este perfil prioriza arranque rápido
+  // y consumo contenido frente a absorber microcortes.
+
+  /// Segundos de caché en TV (la mitad que en el resto).
+  static const int tvBufferSeconds = 6;
+
+  /// Caché máxima del demuxer en TV (48 MiB).
+  static const int tvDemuxerMaxBytes = 48 * 1024 * 1024;
+
+  /// Caché de retroceso en TV (16 MiB).
+  static const int tvDemuxerBackBytes = 16 * 1024 * 1024;
+
+  /// Búfer del socket en TV (1 MiB).
+  static const int tvStreamBufferBytes = 1024 * 1024;
+
   /// Reintentos silenciosos antes de notificar al usuario.
   static const int maxRetries = 3;
 
@@ -34,10 +55,10 @@ abstract final class PlayerTuning {
 
   /// Configuración del [Player]. El tamaño del búfer del demuxer se aplica
   /// también como `demuxer-max-bytes` dentro de libmpv.
-  static PlayerConfiguration playerConfiguration() {
+  static PlayerConfiguration playerConfiguration({bool isTv = false}) {
     return PlayerConfiguration(
       title: 'NexusStream',
-      bufferSize: demuxerMaxBytes,
+      bufferSize: isTv ? tvDemuxerMaxBytes : demuxerMaxBytes,
       logLevel: MPVLogLevel.error,
       protocolWhitelist: const [
         'udp',
@@ -72,9 +93,17 @@ abstract final class PlayerTuning {
   ///
   /// Debe invocarse una sola vez por [Player], antes o durante la primera
   /// reproducción. En la web no hay backend nativo y se omite.
-  static Future<void> applyNativeTuning(Player player) async {
+  static Future<void> applyNativeTuning(
+    Player player, {
+    bool isTv = false,
+  }) async {
     final platform = player.platform;
     if (platform is! NativePlayer) return;
+
+    final bufferSeconds = isTv ? tvBufferSeconds : PlayerTuning.bufferSeconds;
+    final maxBytes = isTv ? tvDemuxerMaxBytes : demuxerMaxBytes;
+    final backBytes = isTv ? tvDemuxerBackBytes : demuxerBackBytes;
+    final socketBytes = isTv ? tvStreamBufferBytes : streamBufferBytes;
 
     final properties = <String, String>{
       // Caché en memoria (no en disco) para streams en vivo.
@@ -82,17 +111,19 @@ abstract final class PlayerTuning {
       'cache-on-disk': 'no',
       'cache-secs': '$bufferSeconds',
       'demuxer-readahead-secs': '$bufferSeconds',
-      'demuxer-max-bytes': '$demuxerMaxBytes',
-      'demuxer-max-back-bytes': '$demuxerBackBytes',
-      'stream-buffer-size': '$streamBufferBytes',
+      'demuxer-max-bytes': '$maxBytes',
+      'demuxer-max-back-bytes': '$backBytes',
+      'stream-buffer-size': '$socketBytes',
       'network-timeout': '$networkTimeoutSeconds',
       // Pausa la reproducción mientras se rellena el búfer, en lugar de
       // congelar la imagen con audio cortado.
       'cache-pause': 'yes',
-      'cache-pause-wait': '3',
-      'cache-pause-initial': 'yes',
-      // Elige la variante de mayor calidad disponible en HLS.
-      'hls-bitrate': 'max',
+      'cache-pause-wait': isTv ? '1' : '3',
+      // En TV no esperamos a llenar 15 s antes del primer fotograma: el
+      // spinner desaparece en cuanto llegan los primeros datos.
+      'cache-pause-initial': isTv ? 'no' : 'yes',
+      // En TV limitamos la variante HLS para no saturar decodificador y red.
+      'hls-bitrate': isTv ? '2500' : 'max',
     };
 
     for (final entry in properties.entries) {

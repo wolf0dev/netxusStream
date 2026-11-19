@@ -52,6 +52,18 @@ abstract final class WiwyConfig {
   /// `apkVer` debe ser exactamente `43404`: el portal responde
   /// `portal200001` («versión detenida») con cualquier otro valor, incluso
   /// versiones más nuevas. No cambiar sin volver a verificar con el portal.
+  ///
+  /// Algunos televisores (Android 9 / Leanback) son los únicos a los que el
+  /// CDN responde `portal200001` (por ejemplo al abrir Cine). En ese caso se
+  /// reintenta con [tvFallbackHeaders]: se mantiene `apkVer` pero se normalizan
+  /// `User-Agent` y `Cache-Control`, que son los campos que esos modelos
+  /// reescriben. Se conserva `identity` para que `dart:io` no tenga que
+  /// descomprimir la respuesta (el cliente `http` no lo hace por nosotros).
+  static Map<String, String> get tvFallbackHeaders => <String, String>{
+    ...headers,
+    'Cache-Control': 'no-store',
+    'User-Agent': 'Dalvik/2.1.0 (Linux; U; Android 9; NX809J Build/PKQ1.190616.001)',
+  };
   static const Map<String, String> headers = {
     'Cache-Control': 'no-store;Content-type:application/json;charset=utf-8',
     'apk': 'com.android.msandroid',
@@ -317,10 +329,28 @@ class WiwyPortal {
 
   // -- transporte ---------------------------------------------------------
 
+  /// Envía la petición y, si el portal responde `portal200001` con las
+  /// cabeceras habituales, la repite una vez con las cabeceras alternativas
+  /// que aceptan los Android TV. Sin esto, Cine no abre en esos dispositivos
+  /// aunque el resto de la app (canales) funcione.
   Future<Map<String, dynamic>> _post(
     String path,
     Map<String, dynamic> payload,
   ) async {
+    try {
+      return await _postRaw(path, payload);
+    } on WiwyException catch (error) {
+      if (error.code != 'portal200001') rethrow;
+      _log('portal200001 en $path; reintentando con cabeceras de TV');
+      return _postRaw(path, payload, WiwyConfig.tvFallbackHeaders);
+    }
+  }
+
+  Future<Map<String, dynamic>> _postRaw(
+    String path,
+    Map<String, dynamic> payload, [
+    Map<String, String>? headersOverride,
+  ]) async {
     final body = encryptLikeApp(jsonEncode(payload), WiwyConfig.key);
     final order = <String>[
       WiwyConfig.portals[portalIndex % WiwyConfig.portals.length],
@@ -334,7 +364,11 @@ class WiwyPortal {
       final uri = Uri.parse('$host$path');
       try {
         final response = await _client
-            .post(uri, headers: WiwyConfig.headers, body: body)
+            .post(
+              uri,
+              headers: headersOverride ?? WiwyConfig.headers,
+              body: body,
+            )
             .timeout(timeout);
 
         if (response.statusCode != 200) {
