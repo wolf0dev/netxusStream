@@ -1,22 +1,22 @@
 {
   "version": "1.0.0",
-  "generatedAt": "2026-11-19T11:41:10.258Z",
+  "generatedAt": "2026-11-20T03:12:36.568Z",
   "windows": {
-    "file": "NexusStream-Setup-1.0.5.exe",
+    "file": "NexusStream-Setup-1.0.6.exe",
     "label": "Instalador de Windows",
-    "bytes": 35566121,
-    "sha256": "528CD0A011CC40DB8F66A55003FF941BB7236EF13B3DDD4A9C0BA5C601D652AD"
+    "bytes": 35565998,
+    "sha256": "5BF0D9AA2B5C1DE0BDA8363B99BB27B37CD79CFACE098F16F53CF61C2F8DFF61"
   },
   "android": {
-    "file": "NexusStream-1.0.5.apk",
+    "file": "NexusStream-1.0.6.apk",
     "label": "APK de Android",
-    "bytes": 85078580,
-    "sha256": "1361D3A9AF9E0B943AF3D448C883456F45B59CEE3E092F77ED90EF05E4152B0C"
+    "bytes": 85079808,
+    "sha256": "2B97E34E301161CDA980A8E9E027A0B1B81377096B7204EDF821AD9121064232"
   },
   "linux": {
-    "file": "NexusStream-1.0.5-linux-x64.tar.gz",
+    "file": "NexusStream-1.0.6-linux-x64.tar.gz",
     "label": "Paquete de Linux x64",
-    "bytes": 20551044,
-    "sha256": "60063E2ED8D84B6C5ADA4104AFADCF11CEB403208E04E897729477AC93BC1034"
+    "bytes": 20551553,
+    "sha256": "354F4321C41B9927CAD60584BD911A16B31B0603069DF1968738BBE58F63E6C6"
   }
 }
