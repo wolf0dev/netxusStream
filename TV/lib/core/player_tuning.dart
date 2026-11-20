@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -9,7 +11,8 @@ import '../services/proxy_service.dart';
 /// Android y Windows usan un búfer amplio (15 s) para absorber microcortes;
 /// Android TV usa un perfil más ligero (ver las constantes `tv*`) porque con
 /// los valores de escritorio se queda atrapada en «Estabilizando señal…».
-/// * Decodificación por hardware (`hwdec` + `enableHardwareAcceleration`).
+/// * En Android TV se desactiva MediaCodec (`hwdec=no`) y se fuerza OpenGL
+///   (`gpu-api=opengl`) para evitar cuelgues del controlador gráfico/Vulkan.
 /// * Reintentos silenciosos antes de avisar al usuario.
 abstract final class PlayerTuning {
   /// Segundos de adelanto del demuxer/caché de red.
@@ -77,14 +80,16 @@ abstract final class PlayerTuning {
     );
   }
 
-  /// Configuración del [VideoController] con aceleración por hardware.
+  /// Configuración del [VideoController].
   ///
-  /// `auto-safe` usa MediaCodec en Android y D3D11/DXVA en Windows cuando el
-  /// códec es compatible; si no lo es, cae a decodificación por software en
-  /// lugar de mostrar una pantalla negra.
-  static VideoControllerConfiguration videoConfiguration() {
-    return const VideoControllerConfiguration(
-      hwdec: 'auto-safe',
+  /// En móvil/Windows `auto-safe` usa MediaCodec o D3D11/DXVA cuando el códec
+  /// es compatible y cae a software si no lo es. En Android TV se fuerza
+  /// decodificación por software: los firmwares de muchos televisores cuelgan
+  /// con MediaCodec/Vulkan y dejan la señal «Estabilizando…» indefinidamente.
+  static VideoControllerConfiguration videoConfiguration({bool isTv = false}) {
+    return VideoControllerConfiguration(
+      vo: isTv ? 'gpu' : null,
+      hwdec: isTv ? 'no' : 'auto-safe',
       enableHardwareAcceleration: true,
     );
   }
@@ -115,9 +120,10 @@ abstract final class PlayerTuning {
       'demuxer-max-back-bytes': '$backBytes',
       'stream-buffer-size': '$socketBytes',
       'network-timeout': '$networkTimeoutSeconds',
-      // Pausa la reproducción mientras se rellena el búfer, en lugar de
-      // congelar la imagen con audio cortado.
-      'cache-pause': 'yes',
+      // En TV NO pausamos al agotar el búfer: `paused-for-cache` mantiene
+      // `playing=false` y el overlay de «Estabilizando…» se queda pegado.
+      // Preferimos un microcorte ocasional a un canal congelado.
+      'cache-pause': isTv ? 'no' : 'yes',
       'cache-pause-wait': isTv ? '1' : '3',
       // En TV no esperamos a llenar 15 s antes del primer fotograma: el
       // spinner desaparece en cuanto llegan los primeros datos.
@@ -125,6 +131,18 @@ abstract final class PlayerTuning {
       // En TV limitamos la variante HLS para no saturar decodificador y red.
       'hls-bitrate': isTv ? '2500' : 'max',
     };
+
+    // Los televisores con firmware roto suelen iniciar libmpv con Vulkan o
+    // un MediaCodec que nunca entrega frames. Forzamos la ruta OpenGL + CPU
+    // antes de que se cree la superficie de vídeo.
+    if (isTv && !kIsWeb && Platform.isAndroid) {
+      properties.addAll({
+        'gpu-api': 'opengl',
+        'gpu-context': 'android',
+        'hwdec': 'no',
+        'vd-lavc-threads': '4',
+      });
+    }
 
     for (final entry in properties.entries) {
       try {

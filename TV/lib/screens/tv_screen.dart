@@ -110,7 +110,7 @@ class _TvScreenState extends State<TvScreen> {
     );
     final controller = VideoController(
       player,
-      configuration: PlayerTuning.videoConfiguration(),
+      configuration: PlayerTuning.videoConfiguration(isTv: true),
     );
     _player = player;
     _controller = controller;

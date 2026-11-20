@@ -133,7 +133,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _player = Player(configuration: PlayerTuning.playerConfiguration(isTv: isTv));
     _controller = VideoController(
       _player,
-      configuration: PlayerTuning.videoConfiguration(),
+      configuration: PlayerTuning.videoConfiguration(isTv: isTv),
     );
     unawaited(PlayerTuning.applyNativeTuning(_player, isTv: isTv));
     _fullscreen = !kIsWeb && Platform.isAndroid;
