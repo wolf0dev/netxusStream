@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../core/app_layout.dart';
@@ -13,6 +12,7 @@ import '../core/app_scope.dart';
 import '../core/app_theme.dart';
 import '../core/channel_categories.dart';
 import '../core/formatters.dart';
+import '../core/playback_engine.dart';
 import '../core/player_tuning.dart';
 import '../models/channel.dart';
 import '../models/vod_resume.dart';
@@ -70,8 +70,7 @@ class PlayerScreen extends StatefulWidget {
 }
 
 class _PlayerScreenState extends State<PlayerScreen> {
-  late Player _player;
-  late VideoController _controller;
+  late PlaybackEngine _engine;
   late Channel _channel;
 
   final List<StreamSubscription<dynamic>> _subscriptions = [];
@@ -130,14 +129,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _activeResume = widget.initialResume;
     _channel = widget.initialChannel;
     final isTv = _app.layout.isTv;
-    _player = Player(configuration: PlayerTuning.playerConfiguration(isTv: isTv));
-    _controller = VideoController(
-      _player,
-      configuration: PlayerTuning.videoConfiguration(isTv: isTv),
-    );
-    unawaited(PlayerTuning.applyNativeTuning(_player, isTv: isTv));
+    _engine = createPlaybackEngine(isTv: isTv);
     _fullscreen = !kIsWeb && Platform.isAndroid;
-    _volume = _player.state.volume;
+    _volume = _engine.initialVolume;
     _lastAudibleVolume = _volume > 0 ? _volume : 100;
 
     // Forzar landscape en Android móvil
@@ -151,7 +145,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     _subscriptions.add(
-      _player.stream.playing.listen((value) {
+      _engine.playing.listen((value) {
         if (!mounted) return;
         if (value) {
           _startedOnce = true;
@@ -191,7 +185,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }),
     );
     _subscriptions.add(
-      _player.stream.buffering.listen((value) {
+      _engine.buffering.listen((value) {
         if (!mounted) return;
         _bufferTimer?.cancel();
         if (!value) {
@@ -210,7 +204,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }),
     );
     _subscriptions.add(
-      _player.stream.volume.listen((value) {
+      _engine.volume.listen((value) {
         if (!mounted) return;
         setState(() {
           _volume = value;
@@ -219,14 +213,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }),
     );
     _subscriptions.add(
-      _player.stream.error.listen((error) {
+      _engine.error.listen((error) {
         if (!mounted) return;
-        debugPrint('Error de media_kit: $error');
+        debugPrint('Error del motor de reproducción: $error');
         _registerFailure(_friendlyError(error));
       }),
     );
     _subscriptions.add(
-      _player.stream.completed.listen((value) {
+      _engine.completed.listen((value) {
         if (!mounted || !value) return;
         // Ignoramos los cierres provocados al abrir un canal nuevo.
         if (DateTime.now().isBefore(_ignoreCompletedUntil)) return;
@@ -245,13 +239,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }),
     );
     _subscriptions.add(
-      _player.stream.height.listen((height) {
+      _engine.height.listen((height) {
         if (!mounted || height == null) return;
         setState(() => _quality = _qualityFor(height));
       }),
     );
     _subscriptions.add(
-      _player.stream.position.listen((position) {
+      _engine.position.listen((position) {
         if (!mounted) return;
         setState(() => _position = position);
         _maybeApplyResume();
@@ -259,20 +253,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }),
     );
     _subscriptions.add(
-      _player.stream.duration.listen((duration) {
+      _engine.duration.listen((duration) {
         if (!mounted) return;
         setState(() => _duration = duration);
         _maybeApplyResume();
       }),
     );
     _subscriptions.add(
-      _player.stream.tracks.listen((tracks) {
+      _engine.tracks.listen((tracks) {
         if (!mounted) return;
         setState(() => _tracks = tracks);
       }),
     );
     _subscriptions.add(
-      _player.stream.track.listen((track) {
+      _engine.track.listen((track) {
         if (!mounted) return;
         setState(() => _selectedTrack = track);
       }),
@@ -299,7 +293,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     for (final subscription in _subscriptions) {
       unawaited(subscription.cancel());
     }
-    unawaited(_player.dispose());
+    unawaited(_engine.dispose());
     if (!kIsWeb && Platform.isAndroid) {
       unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
       unawaited(
@@ -335,7 +329,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
     _resumeApplied = true;
     debugPrint('VOD: reanudando en ${target.inSeconds}s');
-    unawaited(_player.seek(target));
+    unawaited(_engine.seek(target));
   }
 
   /// Registra el punto exacto de reproducción, con un límite de escrituras.
@@ -358,7 +352,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (force && position <= Duration.zero) return;
 
     final now = DateTime.now();
-    if (!force && now.difference(_lastResumeSave) < ResumeService.saveInterval) {
+    if (!force &&
+        now.difference(_lastResumeSave) < ResumeService.saveInterval) {
       return;
     }
     _lastResumeSave = now;
@@ -435,10 +430,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     debugPrint('Headers: ${_channel.httpHeaders}');
 
     try {
-      await _player.open(
-        Media(_channel.url, httpHeaders: _channel.httpHeaders),
-        play: true,
-      );
+      await _engine.open(_channel.url, headers: _channel.httpHeaders);
       unawaited(_applyPreferredSubtitle());
     } catch (error) {
       if (!mounted) return;
@@ -539,9 +531,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return;
     }
     if (_playing) {
-      await _player.pause();
+      await _engine.pause();
     } else {
-      await _player.play();
+      await _engine.play();
     }
     _showControls();
   }
@@ -549,10 +541,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _toggleMute() {
     if (_volume > 0) {
       _lastAudibleVolume = _volume;
-      unawaited(_player.setVolume(0));
+      unawaited(_engine.setVolume(0));
     } else {
       unawaited(
-        _player.setVolume(_lastAudibleVolume <= 0 ? 100 : _lastAudibleVolume),
+        _engine.setVolume(_lastAudibleVolume <= 0 ? 100 : _lastAudibleVolume),
       );
     }
     _showControls();
@@ -563,7 +555,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _volume = value;
       if (value > 0) _lastAudibleVolume = value;
     });
-    unawaited(_player.setVolume(value));
+    unawaited(_engine.setVolume(value));
     _showControls();
   }
 
@@ -574,7 +566,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final clamped = target < Duration.zero
         ? Duration.zero
         : (target > _duration ? _duration : target);
-    unawaited(_player.seek(clamped));
+    unawaited(_engine.seek(clamped));
     _showControls();
   }
 
@@ -626,9 +618,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               icon: isFavorite
                   ? Icons.favorite_rounded
                   : Icons.favorite_border_rounded,
-              label: isFavorite
-                  ? 'Quitar de favoritos'
-                  : 'Añadir a favoritos',
+              label: isFavorite ? 'Quitar de favoritos' : 'Añadir a favoritos',
               accent: isFavorite ? const Color(0xFFFB7185) : null,
               onTap: () => Navigator.of(sheetContext).pop('favorite'),
             ),
@@ -715,7 +705,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     _applyingSubtitle = true;
     try {
-      await _player.setSubtitleTrack(
+      await _engine.setSubtitleTrack(
         SubtitleTrack.uri(
           preferred.url,
           title: _externalSubtitleLabel(preferred),
@@ -759,7 +749,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
     if (selected == null || !mounted) return;
     try {
-      await _player.setAudioTrack(selected);
+      await _engine.setAudioTrack(selected);
     } catch (error) {
       debugPrint('No se pudo cambiar la pista de audio: $error');
     }
@@ -783,7 +773,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
     if (selected == null || !mounted) return;
     try {
-      await _player.setSubtitleTrack(selected);
+      await _engine.setSubtitleTrack(selected);
       if (!mounted) return;
       setState(() {
         _subtitleChoiceTouched = true;
@@ -1042,19 +1032,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                Video(
-                  controller: _controller,
-                  controls: NoVideoControls,
-                  fit: BoxFit.contain,
-                  fill: Colors.black,
-                ),
+                _engine.buildVideo(fit: BoxFit.contain, fill: Colors.black),
                 // `media_kit` emite `buffering` también mientras la señal ya
                 // se está reproduciendo. Mostrar el overlay en ese caso deja
                 // el canal «Estabilizando…» para siempre en las TV con red
                 // lenta. Solo lo mostramos si de verdad no hay imagen.
-                if ((_loading ||
-                        _reconnecting ||
-                        (_buffering && !_playing)) &&
+                if ((_loading || _reconnecting || (_buffering && !_playing)) &&
                     !_signalLost)
                   _BufferingOverlay(
                     channel: _channel,
@@ -1132,11 +1115,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           onPlayPause: () => unawaited(_togglePlay()),
                           onSkip: _seekRelative,
                           onToggleMute: _toggleMute,
-                          onOpenChannels: () =>
-                              unawaited(_openChannelPicker()),
+                          onOpenChannels: () => unawaited(_openChannelPicker()),
                           onFullscreen: () => unawaited(_toggleFullscreen()),
                           onSeek: (duration) =>
-                              unawaited(_player.seek(duration)),
+                              unawaited(_engine.seek(duration)),
                           onMenu: () => unawaited(_openAndroidMenu()),
                         )
                       : _BottomBar(
@@ -1163,11 +1145,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           onPlayPause: () => unawaited(_togglePlay()),
                           onToggleMute: _toggleMute,
                           onVolumeChanged: _setVolume,
-                          onOpenChannels: () =>
-                              unawaited(_openChannelPicker()),
+                          onOpenChannels: () => unawaited(_openChannelPicker()),
                           onFullscreen: () => unawaited(_toggleFullscreen()),
                           onSeek: (duration) =>
-                              unawaited(_player.seek(duration)),
+                              unawaited(_engine.seek(duration)),
                         ),
                 ),
               ],
@@ -1331,9 +1312,7 @@ class _AndroidTopBar extends StatelessWidget {
               icon: isFavorite
                   ? Icons.favorite_rounded
                   : Icons.favorite_border_rounded,
-              label: isFavorite
-                  ? 'Quitar de favoritos'
-                  : 'Añadir a favoritos',
+              label: isFavorite ? 'Quitar de favoritos' : 'Añadir a favoritos',
               onTap: onToggleFavorite,
               active: isFavorite,
               accent: const Color(0xFFFB7185),
@@ -1503,9 +1482,7 @@ class _AndroidBottomBar extends StatelessWidget {
                           icon: volume == 0
                               ? Icons.volume_off_rounded
                               : Icons.volume_up_rounded,
-                          label: volume == 0
-                              ? 'Activar sonido'
-                              : 'Silenciar',
+                          label: volume == 0 ? 'Activar sonido' : 'Silenciar',
                           onTap: onToggleMute,
                           active: volume == 0,
                         ),
@@ -1712,7 +1689,9 @@ class _AndroidIconButton extends StatelessWidget {
                   ? accentColor.withValues(alpha: 0.16)
                   : (filled
                         ? Colors.black.withValues(alpha: hovered ? 0.6 : 0.42)
-                        : Colors.white.withValues(alpha: hovered ? 0.10 : 0.03)),
+                        : Colors.white.withValues(
+                            alpha: hovered ? 0.10 : 0.03,
+                          )),
               border: Border.all(
                 color: focused
                     ? accentColor
