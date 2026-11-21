@@ -121,10 +121,10 @@ const DownloadButton: Component<{
   const href = () =>
     downloadUrl(props.info) ??
     (props.kind === 'windows'
-      ? '/downloads/NexusStream-Setup-1.0.0.exe'
+      ? '/downloads/NexusStream-Setup-1.0.7.exe'
       : props.kind === 'linux'
-        ? '/downloads/NexusStream-1.0.0-linux-x64.tar.gz'
-        : '/downloads/NexusStream-1.0.0.apk');
+        ? '/downloads/NexusStream-1.0.7-linux-x64.tar.gz'
+        : '/downloads/NexusStream-1.0.7.apk');
   const label = () => {
     if (props.kind === 'windows') return 'Descargar para Windows';
     if (props.kind === 'linux') return 'Descargar para Linux';
@@ -640,10 +640,10 @@ const DownloadSection: Component = () => (
                 <p class="mt-1 text-sm text-slate-400">
                   {info()?.file ??
                     (kind === 'windows'
-                      ? 'NexusStream-Setup-1.0.0.exe'
+                      ? 'NexusStream-Setup-1.0.7.exe'
                       : kind === 'linux'
-                        ? 'NexusStream-1.0.0-linux-x64.tar.gz'
-                        : 'NexusStream-1.0.0.apk')}
+                        ? 'NexusStream-1.0.7-linux-x64.tar.gz'
+                        : 'NexusStream-1.0.7.apk')}
                 </p>
                 <div class="mt-6">
                   <DownloadButton info={info()} kind={kind} size="lg" />
