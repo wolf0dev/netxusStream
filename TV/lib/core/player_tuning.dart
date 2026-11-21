@@ -11,6 +11,9 @@ import '../services/proxy_service.dart';
 /// Android y Windows usan un búfer amplio (15 s) para absorber microcortes;
 /// Android TV usa un perfil más ligero (ver las constantes `tv*`) porque con
 /// los valores de escritorio se queda atrapada en «Estabilizando señal…».
+/// * El perfil de TV solo se aplica a Android TV real. La distribución puede
+///   forzarse a «Android TV» en Windows desde Ajustes, pero mpv con `vo=gpu`
+///   abre una ventana externa; en escritorio se mantiene `libmpv` incrustado.
 /// * En Android TV se desactiva MediaCodec (`hwdec=no`) y se fuerza OpenGL
 ///   (`gpu-api=opengl`) para evitar cuelgues del controlador gráfico/Vulkan.
 /// * Reintentos silenciosos antes de avisar al usuario.
@@ -56,12 +59,20 @@ abstract final class PlayerTuning {
   /// Espera entre reintentos automáticos.
   static const Duration retryDelay = Duration(seconds: 3);
 
+  /// `true` solo para Android TV real.
+  ///
+  /// [isTv] refleja la distribución elegida en Ajustes; en Windows se puede
+  /// forzar a «Android TV» sin que el dispositivo lo sea. Aplicar el perfil de
+  /// TV ahí cambiaría `vo` a `gpu` y mpv abriría una segunda ventana.
+  static bool useTvProfile(bool isTv) => isTv && !kIsWeb && Platform.isAndroid;
+
   /// Configuración del [Player]. El tamaño del búfer del demuxer se aplica
   /// también como `demuxer-max-bytes` dentro de libmpv.
   static PlayerConfiguration playerConfiguration({bool isTv = false}) {
+    final tv = useTvProfile(isTv);
     return PlayerConfiguration(
       title: 'NexusStream',
-      bufferSize: isTv ? tvDemuxerMaxBytes : demuxerMaxBytes,
+      bufferSize: tv ? tvDemuxerMaxBytes : demuxerMaxBytes,
       logLevel: MPVLogLevel.error,
       protocolWhitelist: const [
         'udp',
@@ -87,9 +98,10 @@ abstract final class PlayerTuning {
   /// decodificación por software: los firmwares de muchos televisores cuelgan
   /// con MediaCodec/Vulkan y dejan la señal «Estabilizando…» indefinidamente.
   static VideoControllerConfiguration videoConfiguration({bool isTv = false}) {
+    final tv = useTvProfile(isTv);
     return VideoControllerConfiguration(
-      vo: isTv ? 'gpu' : null,
-      hwdec: isTv ? 'no' : 'auto-safe',
+      vo: tv ? 'gpu' : null,
+      hwdec: tv ? 'no' : 'auto-safe',
       enableHardwareAcceleration: true,
     );
   }
@@ -105,10 +117,11 @@ abstract final class PlayerTuning {
     final platform = player.platform;
     if (platform is! NativePlayer) return;
 
-    final bufferSeconds = isTv ? tvBufferSeconds : PlayerTuning.bufferSeconds;
-    final maxBytes = isTv ? tvDemuxerMaxBytes : demuxerMaxBytes;
-    final backBytes = isTv ? tvDemuxerBackBytes : demuxerBackBytes;
-    final socketBytes = isTv ? tvStreamBufferBytes : streamBufferBytes;
+    final tv = useTvProfile(isTv);
+    final bufferSeconds = tv ? tvBufferSeconds : PlayerTuning.bufferSeconds;
+    final maxBytes = tv ? tvDemuxerMaxBytes : demuxerMaxBytes;
+    final backBytes = tv ? tvDemuxerBackBytes : demuxerBackBytes;
+    final socketBytes = tv ? tvStreamBufferBytes : streamBufferBytes;
 
     final properties = <String, String>{
       // Caché en memoria (no en disco) para streams en vivo.
@@ -123,19 +136,19 @@ abstract final class PlayerTuning {
       // En TV NO pausamos al agotar el búfer: `paused-for-cache` mantiene
       // `playing=false` y el overlay de «Estabilizando…» se queda pegado.
       // Preferimos un microcorte ocasional a un canal congelado.
-      'cache-pause': isTv ? 'no' : 'yes',
-      'cache-pause-wait': isTv ? '1' : '3',
+      'cache-pause': tv ? 'no' : 'yes',
+      'cache-pause-wait': tv ? '1' : '3',
       // En TV no esperamos a llenar 15 s antes del primer fotograma: el
       // spinner desaparece en cuanto llegan los primeros datos.
-      'cache-pause-initial': isTv ? 'no' : 'yes',
+      'cache-pause-initial': tv ? 'no' : 'yes',
       // En TV limitamos la variante HLS para no saturar decodificador y red.
-      'hls-bitrate': isTv ? '2500' : 'max',
+      'hls-bitrate': tv ? '2500' : 'max',
     };
 
     // Los televisores con firmware roto suelen iniciar libmpv con Vulkan o
     // un MediaCodec que nunca entrega frames. Forzamos la ruta OpenGL + CPU
     // antes de que se cree la superficie de vídeo.
-    if (isTv && !kIsWeb && Platform.isAndroid) {
+    if (tv) {
       properties.addAll({
         'gpu-api': 'opengl',
         'gpu-context': 'android',

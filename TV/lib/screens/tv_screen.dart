@@ -105,16 +105,17 @@ class _TvScreenState extends State<TvScreen> {
   void _ensurePlayer() {
     if (_player != null) return;
 
+    final isTv = widget.layout.isTv;
     final player = Player(
-      configuration: PlayerTuning.playerConfiguration(isTv: true),
+      configuration: PlayerTuning.playerConfiguration(isTv: isTv),
     );
     final controller = VideoController(
       player,
-      configuration: PlayerTuning.videoConfiguration(isTv: true),
+      configuration: PlayerTuning.videoConfiguration(isTv: isTv),
     );
     _player = player;
     _controller = controller;
-    unawaited(PlayerTuning.applyNativeTuning(player, isTv: true));
+    unawaited(PlayerTuning.applyNativeTuning(player, isTv: isTv));
     unawaited(player.setVolume(_muted ? 0 : 100));
 
     _subscriptions.add(
