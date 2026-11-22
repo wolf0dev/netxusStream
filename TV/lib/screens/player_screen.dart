@@ -488,6 +488,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _reconnecting = true;
       _buffering = true;
     });
+    // En Android TV el primer reintento conserva MediaCodec pero baja de
+    // Vulkan a OpenGL; los siguientes degradan el decoder solo si hace falta.
+    if (_retryAttempt > 0) {
+      await _engine.applyRecovery(_retryAttempt);
+    }
     _armStartupWatchdog();
     await _openStream();
   }

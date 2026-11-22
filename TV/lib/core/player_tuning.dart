@@ -140,10 +140,11 @@ abstract final class PlayerTuning {
 
     if (tv) {
       properties.addAll({
-        // Vulkan es la ruta más rápida en los SoC recientes; si el firmware no
-        // lo soporta, mpv cae a OpenGL. Nunca forzamos software: MediaCodec es
-        // la única forma de que un televisor económico mantenga 1080p sin lag.
-        'gpu-api': 'vulkan',
+        // Vulkan se usa cuando el firmware lo expone, pero forzarlo en
+        // televisores económicos entrega imagen solo unos segundos y luego
+        // reinicia el decoder. `auto` elige la ruta segura; si aun así corta,
+        // `applyRecovery` fija OpenGL manteniendo MediaCodec.
+        'gpu-api': 'auto',
         'gpu-context': 'android',
         'hwdec': 'mediacodec-copy',
         'vd-lavc-threads': '4',
@@ -155,6 +156,31 @@ abstract final class PlayerTuning {
     return properties;
   }
 
+  /// Perfil de rescate tras un corte con imagen fluida: se mantiene Vulkan
+  /// mientras funciona, pero el primer reintento ya baja a OpenGL.
+  ///
+  /// [attempt] es el número de reintento silencioso (1..[maxRetries]).
+  static Map<String, String> recoveryProperties(int attempt) {
+    if (attempt <= 0) return const <String, String>{};
+    final base = <String, String>{
+      'gpu-api': 'opengl',
+      'video-sync': 'audio',
+    };
+    if (attempt == 1) return base;
+    if (attempt == 2) {
+      return <String, String>{
+        ...base,
+        'hwdec': 'auto-safe',
+        'vd-lavc-threads': '2',
+      };
+    }
+    return <String, String>{
+      ...base,
+      'hwdec': 'no',
+      'vd-lavc-threads': '2',
+    };
+  }
+
   static Future<void> _setProperty(
     NativePlayer platform,
     String key,
@@ -164,6 +190,24 @@ abstract final class PlayerTuning {
       await platform.setProperty(key, value);
     } catch (error) {
       debugPrint('No se pudo aplicar $key=$value: $error');
+    }
+  }
+
+  /// Degrada gradualmente el perfil de Android TV tras un corte de señal.
+  ///
+  /// Solo afecta al televisor real; el escritorio conserva `libmpv`
+  /// incrustado y el móvil usa Media3.
+  static Future<void> applyRecovery(
+    Player player, {
+    required bool isTv,
+    required int attempt,
+  }) async {
+    if (!useTvProfile(isTv)) return;
+    final platform = player.platform;
+    if (platform is! NativePlayer) return;
+    debugPrint('Android TV: aplicando perfil de rescate $attempt');
+    for (final entry in recoveryProperties(attempt).entries) {
+      await _setProperty(platform, entry.key, entry.value);
     }
   }
 

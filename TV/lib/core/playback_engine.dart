@@ -52,6 +52,9 @@ abstract class PlaybackEngine {
 
   Widget buildVideo({BoxFit fit = BoxFit.contain, Color fill = Colors.black});
 
+  /// Degrada el perfil de vídeo tras un corte. No hace nada en móvil o PC.
+  Future<void> applyRecovery(int attempt) async {}
+
   Future<void> dispose();
 }
 
@@ -65,7 +68,7 @@ PlaybackEngine createPlaybackEngine({required bool isTv}) {
 
 /// Motor basado en libmpv (Android TV, Windows, Linux y web).
 class MpvPlaybackEngine implements PlaybackEngine {
-  MpvPlaybackEngine({required bool isTv}) {
+  MpvPlaybackEngine({required bool isTv}) : _isTv = isTv {
     _player = Player(
       configuration: PlayerTuning.playerConfiguration(isTv: isTv),
     );
@@ -78,6 +81,7 @@ class MpvPlaybackEngine implements PlaybackEngine {
 
   late final Player _player;
   late final VideoController _controller;
+  final bool _isTv;
 
   @override
   Stream<bool> get playing => _player.stream.playing;
@@ -144,6 +148,11 @@ class MpvPlaybackEngine implements PlaybackEngine {
       fit: fit,
       fill: fill,
     );
+  }
+
+  @override
+  Future<void> applyRecovery(int attempt) {
+    return PlayerTuning.applyRecovery(_player, isTv: _isTv, attempt: attempt);
   }
 
   @override
@@ -469,6 +478,9 @@ class Media3PlaybackEngine implements PlaybackEngine {
   Widget buildVideo({BoxFit fit = BoxFit.contain, Color fill = Colors.black}) {
     return Media3VideoView(engine: this, fit: fit, fill: fill);
   }
+
+  @override
+  Future<void> applyRecovery(int attempt) async {}
 
   @override
   Future<void> dispose() async {
