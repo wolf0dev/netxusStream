@@ -14,8 +14,8 @@ import '../services/proxy_service.dart';
 /// * El perfil de TV solo se aplica a Android TV real. La distribución puede
 ///   forzarse a «Android TV» en Windows desde Ajustes, pero mpv con `vo=gpu`
 ///   abre una ventana externa; en escritorio se mantiene `libmpv` incrustado.
-/// * En Android TV se desactiva MediaCodec (`hwdec=no`) y se fuerza OpenGL
-///   (`gpu-api=opengl`) para evitar cuelgues del controlador gráfico/Vulkan.
+/// * En Android TV se usa MediaCodec sobre Vulkan/OpenGL con degradación
+///   automática a software solo si el dispositivo no entrega fotogramas.
 /// * Reintentos silenciosos antes de avisar al usuario.
 abstract final class PlayerTuning {
   /// Segundos de adelanto del demuxer/caché de red.
@@ -64,7 +64,8 @@ abstract final class PlayerTuning {
   /// [isTv] refleja la distribución elegida en Ajustes; en Windows se puede
   /// forzar a «Android TV» sin que el dispositivo lo sea. Aplicar el perfil de
   /// TV ahí cambiaría `vo` a `gpu` y mpv abriría una segunda ventana.
-  static bool useTvProfile(bool isTv) => isTv && !kIsWeb && Platform.isAndroid;
+  static bool useTvProfile(bool isTv) =>
+      isTv && !kIsWeb && Platform.isAndroid;
 
   /// Configuración del [Player]. El tamaño del búfer del demuxer se aplica
   /// también como `demuxer-max-bytes` dentro de libmpv.
@@ -94,30 +95,22 @@ abstract final class PlayerTuning {
   /// Configuración del [VideoController].
   ///
   /// En móvil/Windows `auto-safe` usa MediaCodec o D3D11/DXVA cuando el códec
-  /// es compatible y cae a software si no lo es. En Android TV se fuerza
-  /// decodificación por software: los firmwares de muchos televisores cuelgan
-  /// con MediaCodec/Vulkan y dejan la señal «Estabilizando…» indefinidamente.
+  /// es compatible y cae a software si no lo es. En Android TV usamos
+  /// `mediacodec-copy` con `vo=gpu`: MediaCodec descodifica en el SoC y mpv
+  /// elige Vulkan/OpenGL según el firmware del televisor.
   static VideoControllerConfiguration videoConfiguration({bool isTv = false}) {
     final tv = useTvProfile(isTv);
     return VideoControllerConfiguration(
       vo: tv ? 'gpu' : null,
-      hwdec: tv ? 'no' : 'auto-safe',
+      hwdec: tv ? 'mediacodec-copy' : 'auto-safe',
       enableHardwareAcceleration: true,
     );
   }
 
-  /// Aplica propiedades de libmpv que mejoran la estabilidad del streaming.
+  /// Propiedades base que mejoran la estabilidad del streaming.
   ///
-  /// Debe invocarse una sola vez por [Player], antes o durante la primera
-  /// reproducción. En la web no hay backend nativo y se omite.
-  static Future<void> applyNativeTuning(
-    Player player, {
-    bool isTv = false,
-  }) async {
-    final platform = player.platform;
-    if (platform is! NativePlayer) return;
-
-    final tv = useTvProfile(isTv);
+  /// Extraídas para poder comprobarlas sin crear un [Player] nativo.
+  static Map<String, String> nativeProperties({required bool tv}) {
     final bufferSeconds = tv ? tvBufferSeconds : PlayerTuning.bufferSeconds;
     final maxBytes = tv ? tvDemuxerMaxBytes : demuxerMaxBytes;
     final backBytes = tv ? tvDemuxerBackBytes : demuxerBackBytes;
@@ -145,23 +138,64 @@ abstract final class PlayerTuning {
       'hls-bitrate': tv ? '2500' : 'max',
     };
 
-    // Los televisores con firmware roto suelen iniciar libmpv con Vulkan o
-    // un MediaCodec que nunca entrega frames. Forzamos la ruta OpenGL + CPU
-    // antes de que se cree la superficie de vídeo.
     if (tv) {
       properties.addAll({
-        'gpu-api': 'opengl',
+        // Vulkan es la ruta más rápida en los SoC recientes; si el firmware no
+        // lo soporta, mpv cae a OpenGL. Nunca forzamos software: MediaCodec es
+        // la única forma de que un televisor económico mantenga 1080p sin lag.
+        'gpu-api': 'vulkan',
         'gpu-context': 'android',
-        'hwdec': 'no',
+        'hwdec': 'mediacodec-copy',
         'vd-lavc-threads': '4',
+        'video-sync': 'display-resample',
+        'framedrop': 'vo',
       });
     }
 
+    return properties;
+  }
+
+  static Future<void> _setProperty(
+    NativePlayer platform,
+    String key,
+    String value,
+  ) async {
+    try {
+      await platform.setProperty(key, value);
+    } catch (error) {
+      debugPrint('No se pudo aplicar $key=$value: $error');
+    }
+  }
+
+  /// Aplica propiedades de libmpv que mejoran la estabilidad del streaming.
+  ///
+  /// Debe invocarse una sola vez por [Player], antes o durante la primera
+  /// reproducción. En la web no hay backend nativo y se omite.
+  static Future<void> applyNativeTuning(
+    Player player, {
+    bool isTv = false,
+  }) async {
+    final platform = player.platform;
+    if (platform is! NativePlayer) return;
+
+    final tv = useTvProfile(isTv);
+    final properties = nativeProperties(tv: tv);
+
     for (final entry in properties.entries) {
+      final fallback = switch (entry.key) {
+        'gpu-api' => 'opengl',
+        'hwdec' => 'auto-safe',
+        _ => null,
+      };
+      if (fallback == null) {
+        await _setProperty(platform, entry.key, entry.value);
+        continue;
+      }
       try {
         await platform.setProperty(entry.key, entry.value);
       } catch (error) {
-        debugPrint('No se pudo aplicar ${entry.key}: $error');
+        debugPrint('No se pudo aplicar ${entry.key}=${entry.value}: $error');
+        await _setProperty(platform, entry.key, fallback);
       }
     }
 

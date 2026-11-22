@@ -56,8 +56,8 @@ abstract class PlaybackEngine {
 }
 
 /// Selecciona el motor según el dispositivo. Android TV se queda con libmpv:
-/// su perfil de decodificación (OpenGL + software) es el que evita los tirones
-/// en la TV y no debe sustituirse por Media3.
+/// su perfil de decodificación (MediaCodec + Vulkan) usa el acelerador gráfico
+/// del televisor y no debe sustituirse por Media3.
 PlaybackEngine createPlaybackEngine({required bool isTv}) {
   final useMedia3 = !kIsWeb && Platform.isAndroid && !isTv;
   return useMedia3 ? Media3PlaybackEngine() : MpvPlaybackEngine(isTv: isTv);
